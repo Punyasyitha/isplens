@@ -1,5 +1,5 @@
-// import SinkronisasiPage from '@/components/dashboard/pages/SinkronisasiPage'
+import SinkronisasiPage from '@/components/dashboard/pages/SinkronisasiPage'
 
-// export default function Sinkronisasi() {
-//   return <SinkronisasiPage />
-// }
+export default function Sinkronisasi() {
+  return <SinkronisasiPage />
+}

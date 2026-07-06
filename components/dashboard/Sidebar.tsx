@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
@@ -20,11 +21,20 @@ const navItems = [
   { href: '/dashboard/overview',       label: 'Overview',       icon: LayoutDashboard,    description: 'Ringkasan data' },
   { href: '/dashboard/statistik-data', label: 'Statistik Data', icon: BarChart2,           description: 'Grafik & distribusi' },
   { href: '/dashboard/analisis',       label: 'Analisis',       icon: MessageSquareText,   description: 'Prediksi komentar' },
-//  { href: '/dashboard/sinkronisasi',   label: 'Sinkronisasi',   icon: RefreshCcw,          description: 'Perbarui data' },
+  { href: '/dashboard/sinkronisasi',   label: 'Sinkronisasi',   icon: RefreshCcw,          description: 'Perbarui data' },
 ]
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) {
+    return <aside className="dashboard-sidebar" style={{ background: T.primary }} />
+  }
 
   return (
     <aside className="dashboard-sidebar" style={{ background: T.primary }}>

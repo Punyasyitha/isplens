@@ -1,0 +1,1 @@
+".env`n__pycache__/`n*.pyc" | Out-File .gitignore -Encoding utf8

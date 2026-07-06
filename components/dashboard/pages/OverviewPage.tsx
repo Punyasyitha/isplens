@@ -1,158 +1,881 @@
 'use client'
 
-import { useState } from 'react'
-import { TrendingUp, TrendingDown, MessageSquare, Activity, Database, ChevronDown } from 'lucide-react'
+import Link from 'next/link'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { TrendingUp, TrendingDown, Activity, Database, Loader2 } from 'lucide-react'
 
-// ── Semua data dihitung langsung dari blind_test_results.csv ──────────
-const ASPECTS = [
-  'Stabilitas Jaringan', 'Harga', 'Kemudahan Akses Layanan', 'Layanan Pelanggan',
-  'Penanganan Gangguan', 'Kecepatan Internet', 'Instalasi', 'Keamanan Layanan',
-]
+// ── Konstanta ──────────────────────────────────────────────────
+type ProviderKey = 'Semua' | 'IndiHome' | 'AXIS' | 'IM3' | 'by.U' | 'Telkomsel' | 'Biznet' | 'XL'
 
-const ASPECT_COLORS: Record<string, string> = {
-  'Stabilitas Jaringan':    '#1D9E75',
-  'Harga':                  '#E8A020',
-  'Kemudahan Akses Layanan':'#8E44AD',
-  'Layanan Pelanggan':      '#1A7A43',
-  'Penanganan Gangguan':    '#E67E22',
-  'Kecepatan Internet':     '#C0392B',
-  'Instalasi':              '#7F8C8D',
-  'Keamanan Layanan':       '#16A085',
+const ANALYSIS_HISTORY_KEY = 'isplens_last_analysis_history'
+
+type AnalyzeHistoryRow = {
+  text: string
+  time: string
+  aspect: string
+  sentiment: 'Positif' | 'Negatif' | 'Netral'
 }
 
-type ProviderKey = 'Semua' | 'Indihome' | 'Axis' | 'IM3' | 'ByU' | 'Simpati' | 'Biznet' | 'Indosat'
-
-interface ProviderStats {
-  total: number
-  neg: number; neu: number; pos: number
-  neg_pct: number; neu_pct: number; pos_pct: number
-  asp_neg: Record<string, number>
-  asp_pos: Record<string, number>
-  traffic: Record<string, number>
-}
-
-const CSV_STATS: Record<ProviderKey, ProviderStats> = {
-  Semua:   { total:366, neg:207, neu:145, pos:14,  neg_pct:56.6, neu_pct:39.6, pos_pct:3.8,
-    asp_neg:{'Stabilitas Jaringan':129,'Harga':20,'Kemudahan Akses Layanan':24,'Layanan Pelanggan':10,'Penanganan Gangguan':10,'Kecepatan Internet':10,'Instalasi':3,'Keamanan Layanan':1},
-    asp_pos:{'Stabilitas Jaringan':5,'Harga':1,'Kemudahan Akses Layanan':2,'Layanan Pelanggan':0,'Penanganan Gangguan':2,'Kecepatan Internet':2,'Instalasi':0,'Keamanan Layanan':2},
-    traffic:{'Stabilitas Jaringan':46.4,'Harga':15.8,'Kemudahan Akses Layanan':14.5,'Layanan Pelanggan':7.1,'Penanganan Gangguan':6.6,'Kecepatan Internet':3.6,'Instalasi':3.0,'Keamanan Layanan':3.0}},
-  Indihome:{ total:122, neg:72,  neu:47,  pos:3,   neg_pct:59.0, neu_pct:38.5, pos_pct:2.5,
-    asp_neg:{'Stabilitas Jaringan':46,'Harga':6,'Kemudahan Akses Layanan':3,'Layanan Pelanggan':5,'Penanganan Gangguan':7,'Kecepatan Internet':4,'Instalasi':1,'Keamanan Layanan':0},
-    asp_pos:{'Stabilitas Jaringan':0,'Harga':0,'Kemudahan Akses Layanan':1,'Layanan Pelanggan':0,'Penanganan Gangguan':1,'Kecepatan Internet':1,'Instalasi':0,'Keamanan Layanan':0},
-    traffic:{'Stabilitas Jaringan':48.4,'Harga':14.8,'Kemudahan Akses Layanan':6.6,'Layanan Pelanggan':9.8,'Penanganan Gangguan':12.3,'Kecepatan Internet':4.9,'Instalasi':1.6,'Keamanan Layanan':1.6}},
-  Axis:    { total:87,  neg:58,  neu:28,  pos:1,   neg_pct:66.7, neu_pct:32.2, pos_pct:1.1,
-    asp_neg:{'Stabilitas Jaringan':38,'Harga':7,'Kemudahan Akses Layanan':10,'Layanan Pelanggan':0,'Penanganan Gangguan':1,'Kecepatan Internet':2,'Instalasi':0,'Keamanan Layanan':0},
-    asp_pos:{'Stabilitas Jaringan':1,'Harga':0,'Kemudahan Akses Layanan':0,'Layanan Pelanggan':0,'Penanganan Gangguan':0,'Kecepatan Internet':0,'Instalasi':0,'Keamanan Layanan':0},
-    traffic:{'Stabilitas Jaringan':57.5,'Harga':16.1,'Kemudahan Akses Layanan':17.2,'Layanan Pelanggan':2.3,'Penanganan Gangguan':1.1,'Kecepatan Internet':2.3,'Instalasi':2.3,'Keamanan Layanan':1.1}},
-  IM3:     { total:57,  neg:31,  neu:21,  pos:5,   neg_pct:54.4, neu_pct:36.8, pos_pct:8.8,
-    asp_neg:{'Stabilitas Jaringan':17,'Harga':5,'Kemudahan Akses Layanan':4,'Layanan Pelanggan':1,'Penanganan Gangguan':1,'Kecepatan Internet':2,'Instalasi':1,'Keamanan Layanan':0},
-    asp_pos:{'Stabilitas Jaringan':3,'Harga':1,'Kemudahan Akses Layanan':0,'Layanan Pelanggan':0,'Penanganan Gangguan':0,'Kecepatan Internet':1,'Instalasi':0,'Keamanan Layanan':0},
-    traffic:{'Stabilitas Jaringan':40.4,'Harga':24.6,'Kemudahan Akses Layanan':14.0,'Layanan Pelanggan':3.5,'Penanganan Gangguan':5.3,'Kecepatan Internet':5.3,'Instalasi':7.0,'Keamanan Layanan':0.0}},
-  ByU:     { total:35,  neg:27,  neu:8,   pos:0,   neg_pct:77.1, neu_pct:22.9, pos_pct:0.0,
-    asp_neg:{'Stabilitas Jaringan':21,'Harga':0,'Kemudahan Akses Layanan':3,'Layanan Pelanggan':1,'Penanganan Gangguan':1,'Kecepatan Internet':0,'Instalasi':1,'Keamanan Layanan':0},
-    asp_pos:{'Stabilitas Jaringan':0,'Harga':0,'Kemudahan Akses Layanan':0,'Layanan Pelanggan':0,'Penanganan Gangguan':0,'Kecepatan Internet':0,'Instalasi':0,'Keamanan Layanan':0},
-    traffic:{'Stabilitas Jaringan':65.7,'Harga':5.7,'Kemudahan Akses Layanan':14.3,'Layanan Pelanggan':5.7,'Penanganan Gangguan':2.9,'Kecepatan Internet':0.0,'Instalasi':2.9,'Keamanan Layanan':2.9}},
-  Simpati: { total:33,  neg:7,   neu:21,  pos:5,   neg_pct:21.2, neu_pct:63.6, pos_pct:15.2,
-    asp_neg:{'Stabilitas Jaringan':3,'Harga':1,'Kemudahan Akses Layanan':2,'Layanan Pelanggan':0,'Penanganan Gangguan':0,'Kecepatan Internet':0,'Instalasi':0,'Keamanan Layanan':1},
-    asp_pos:{'Stabilitas Jaringan':1,'Harga':0,'Kemudahan Akses Layanan':1,'Layanan Pelanggan':0,'Penanganan Gangguan':1,'Kecepatan Internet':0,'Instalasi':0,'Keamanan Layanan':2},
-    traffic:{'Stabilitas Jaringan':15.2,'Harga':15.2,'Kemudahan Akses Layanan':27.3,'Layanan Pelanggan':6.1,'Penanganan Gangguan':9.1,'Kecepatan Internet':0.0,'Instalasi':6.1,'Keamanan Layanan':21.2}},
-  Biznet:  { total:20,  neg:8,   neu:12,  pos:0,   neg_pct:40.0, neu_pct:60.0, pos_pct:0.0,
-    asp_neg:{'Stabilitas Jaringan':1,'Harga':1,'Kemudahan Akses Layanan':2,'Layanan Pelanggan':3,'Penanganan Gangguan':0,'Kecepatan Internet':1,'Instalasi':0,'Keamanan Layanan':0},
-    asp_pos:{'Stabilitas Jaringan':0,'Harga':0,'Kemudahan Akses Layanan':0,'Layanan Pelanggan':0,'Penanganan Gangguan':0,'Kecepatan Internet':0,'Instalasi':0,'Keamanan Layanan':0},
-    traffic:{'Stabilitas Jaringan':10.0,'Harga':15.0,'Kemudahan Akses Layanan':35.0,'Layanan Pelanggan':30.0,'Penanganan Gangguan':5.0,'Kecepatan Internet':5.0,'Instalasi':0.0,'Keamanan Layanan':0.0}},
-  Indosat: { total:12,  neg:4,   neu:8,   pos:0,   neg_pct:33.3, neu_pct:66.7, pos_pct:0.0,
-    asp_neg:{'Stabilitas Jaringan':3,'Harga':0,'Kemudahan Akses Layanan':0,'Layanan Pelanggan':0,'Penanganan Gangguan':0,'Kecepatan Internet':1,'Instalasi':0,'Keamanan Layanan':0},
-    asp_pos:{'Stabilitas Jaringan':0,'Harga':0,'Kemudahan Akses Layanan':0,'Layanan Pelanggan':0,'Penanganan Gangguan':0,'Kecepatan Internet':0,'Instalasi':0,'Keamanan Layanan':0},
-    traffic:{'Stabilitas Jaringan':66.7,'Harga':16.7,'Kemudahan Akses Layanan':8.3,'Layanan Pelanggan':0.0,'Penanganan Gangguan':0.0,'Kecepatan Internet':8.3,'Instalasi':0.0,'Keamanan Layanan':0.0}},
-}
-
-// Provider bar chart — distribusi klausa per provider (relatif terhadap max=122)
-const PROVIDER_BARS = [
-  { name: 'Indihome', total: 122, fill: 100 },
-  { name: 'Axis',     total:  87, fill:  71 },
-  { name: 'IM3',      total:  57, fill:  46 },
-  { name: 'ByU',      total:  35, fill:  28 },
-  { name: 'Simpati',  total:  33, fill:  27 },
-  { name: 'Biznet',   total:  20, fill:  16 },
-  { name: 'Indosat',  total:  12, fill:   9 },
+const ANALYZE_HISTORY_FALLBACK: AnalyzeHistoryRow[] = [
+  { text: 'Biznet makin sini makin ga karuan jaringannya, kecepatan 12 mbps',  time: '10/12', aspect: 'Stabilitas Jaringan', sentiment: 'Negatif' },
+  { text: 'Keluhan Indihome 4 hari tidak ditangani, tidak ada follow up',      time: '10/14', aspect: 'Penanganan Gangguan', sentiment: 'Negatif' },
+  { text: 'Paket Ramadan IM3 worth it, kenceng dan harga terjangkau',          time: '10/07', aspect: 'Harga',               sentiment: 'Positif' },
+  { text: 'Sinyal Axis 3 hari gaada terus, sangat mengganggu aktivitas kerja', time: '10/18', aspect: 'Stabilitas Jaringan', sentiment: 'Negatif' },
 ]
 
-// Analyze history — 4 baris dari data CSV nyata
-const ANALYZE_HISTORY = [
-  { text: 'Biznet makin sini makin ga karuan jaringannya, kecepatan 12 mbps',   time: '10/12', aspect: 'Stabilitas Jaringan', sentiment: 'Negatif' },
-  { text: 'Keluhan Indihome 4 hari tidak ditangani, tidak ada follow up',       time: '10/14', aspect: 'Penanganan Gangguan', sentiment: 'Negatif' },
-  { text: 'Paket Ramadan IM3 worth it, kenceng dan harga terjangkau',           time: '10/07', aspect: 'Harga',               sentiment: 'Positif' },
-  { text: 'Sinyal Axis 3 hari gaada terus, sangat mengganggu aktivitas kerja',  time: '10/18', aspect: 'Stabilitas Jaringan', sentiment: 'Negatif' },
-]
+const PROVIDERS: ProviderKey[] = ['Semua', 'IndiHome', 'AXIS', 'IM3', 'by.U', 'Telkomsel', 'Biznet', 'XL']
 
-const PROVIDERS: ProviderKey[] = ['Semua', 'Indihome', 'Axis', 'IM3', 'ByU', 'Simpati', 'Biznet', 'Indosat']
+const PROVIDER_ORDER: ProviderKey[] = ['IndiHome', 'AXIS', 'IM3', 'by.U', 'Telkomsel', 'Biznet', 'XL']
 
-export default function OverviewPage() {
-  const [selectedProvider, setSelectedProvider] = useState<ProviderKey>('Semua')
-  const [dropdownOpen, setDropdownOpen] = useState(false)
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8001'
 
-  const d = CSV_STATS[selectedProvider]
+// ── Tipe untuk data tren dari /stats ───────────────────────────
+interface TrendPoint {
+  month: string
+  neg: number; pos: number; neu: number; total: number
+  neg_pct: number; pos_pct: number
+}
 
-  // Stat cards — computed from selected provider
-  const statCards = [
-    { label: 'Total Klausa',     value: String(d.total),   change: '100%',              up: true,  icon: Database },
-    { label: 'Sentimen Negatif', value: String(d.neg),     change: `${d.neg_pct}%`,     up: false, icon: TrendingDown },
-    { label: 'Sentimen Netral',  value: String(d.neu),     change: `${d.neu_pct}%`,     up: true,  icon: Activity },
-    { label: 'Sentimen Positif', value: String(d.pos),     change: `${d.pos_pct}%`,     up: true,  icon: TrendingUp },
-  ]
+interface ProviderTrend {
+  provider: string
+  color: string
+  points: TrendPoint[]
+}
 
-  // Traffic by aspect — dari data provider terpilih
-  const trafficByAspect = ASPECTS.map((asp) => ({
-    label: asp,
-    pct: d.traffic[asp] ?? 0,
-    color: ASPECT_COLORS[asp],
-  })).filter((a) => a.pct > 0).sort((a, b) => b.pct - a.pct)
+const PROVIDER_COLORS: Record<string, string> = {
+  'IndiHome':  '#E53935',  // Merah
+  'IM3':       '#F57C00',  // Oranye
+  'XL':        '#29B6F6',  // Biru Muda
+  'AXIS':      '#7B1FA2',  // Ungu
+  'Telkomsel': '#800020',  // Burgundy
+  'Biznet':    '#1565C0',  // Biru Tua
+  'by.U':      '#EC407A',  // Pink
+}
 
-  return (
-    <div className="animate-fade-in">
+// ── Bobot expert hasil kuesioner (normalisasi dari skor Likert) ─
+const EXPERT_WEIGHTS: Record<string, number> = {
+  'Kecepatan Internet':      5 / 33,
+  'Stabilitas Jaringan':     5 / 33,
+  'Penanganan Gangguan':     5 / 33,
+  'Keamanan Layanan':        5 / 33,
+  'Layanan Pelanggan':       4 / 33,
+  'Harga':                   3 / 33,
+  'Kemudahan Akses Layanan': 3 / 33,
+  'Instalasi':               3 / 33,
+}
 
-      {/* ── Provider Selector ── */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20, position: 'relative' }}>
-        <button
-          onClick={() => setDropdownOpen(!dropdownOpen)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            background: '#085041', color: '#fff',
-            border: 'none', borderRadius: 8, padding: '8px 16px',
-            fontSize: 13, fontWeight: 500, cursor: 'pointer',
-          }}
-        >
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#5DCAA5', display: 'inline-block' }} />
-          {selectedProvider === 'Semua' ? 'Semua Provider' : selectedProvider}
-          <ChevronDown size={13} style={{ opacity: 0.7 }} />
-        </button>
+// ── Sentiment Heatmap — per provider, positif vs negatif ─────
+const MONTHS_LABEL = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Ags','Sep','Okt','Nov','Des']
 
-        {dropdownOpen && (
-          <div style={{
-            position: 'absolute', top: 'calc(100% + 6px)', right: 0,
-            background: '#fff', border: '1px solid #B8DDD2', borderRadius: 10,
-            minWidth: 160, boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
-            overflow: 'hidden', zIndex: 100,
-          }}>
-            {PROVIDERS.map((p) => (
-              <button key={p} onClick={() => { setSelectedProvider(p); setDropdownOpen(false) }}
+function SentimentHeatmap({ providerTrends, loading, selectedProvider }: {
+  providerTrends: ProviderTrend[]
+  loading: boolean
+  selectedProvider: string
+}) {
+  const [hovered, setHovered] = useState<{provider: string; sentiment: 'positif' | 'negatif'; col: number} | null>(null)
+  const [pageIndex, setPageIndex] = useState(0)
+
+  // Reset ke halaman pertama saat provider berubah
+  useEffect(() => {
+    setPageIndex(0)
+  }, [selectedProvider])
+
+  // Filter berdasarkan selectedProvider, lalu sort
+  const filtered = selectedProvider === 'Semua'
+    ? providerTrends
+    : providerTrends.filter(p => p.provider === selectedProvider)
+
+  const visible = [...filtered].sort((a, b) => {
+    const indexA = PROVIDER_ORDER.indexOf(a.provider as ProviderKey)
+    const indexB = PROVIDER_ORDER.indexOf(b.provider as ProviderKey)
+    if (indexA === -1 && indexB === -1) return a.provider.localeCompare(b.provider)
+    if (indexA === -1) return 1
+    if (indexB === -1) return -1
+    return indexA - indexB
+  })
+
+  useEffect(() => {
+    if (pageIndex >= visible.length) setPageIndex(Math.max(0, visible.length - 1))
+  }, [pageIndex, visible.length])
+
+  if (loading) return (
+    <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: '#3D6B5C', fontSize: 12 }}>
+      <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+      Memuat heatmap provider...
+    </div>
+  )
+
+  if (visible.length === 0) return (
+    <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3D6B5C', fontSize: 12, flexDirection: 'column', gap: 4 }}>
+      <span style={{ fontSize: 20 }}>📊</span>
+      <span>
+        {selectedProvider === 'Semua'
+          ? 'Belum ada provider yang berhasil disinkronisasi'
+          : `Belum ada data sinkronisasi dari ${selectedProvider}`}
+      </span>
+      <span style={{ fontSize: 11, color: '#A0750A' }}>Lakukan sinkronisasi terlebih dahulu</span>
+    </div>
+  )
+
+  const getColor = (pct: number, total: number, sentiment: 'positif' | 'negatif') => {
+    if (total === 0) return '#F4F4F4'
+
+    if (sentiment === 'positif') {
+      if (pct >= 80) return '#1A7A43'
+      if (pct >= 60) return '#1D9E75'
+      if (pct >= 40) return '#5DCAA5'
+      if (pct >= 20) return '#A7E3C7'
+      return '#DDF5EA'
+    }
+
+    if (pct >= 80) return '#7B2020'
+    if (pct >= 60) return '#C0392B'
+    if (pct >= 40) return '#E24B4A'
+    if (pct >= 20) return '#F08A84'
+    return '#FAD9D7'
+  }
+
+  const textColor = (pct: number, total: number) => {
+    if (total === 0) return '#B0B0B0'
+    return pct >= 60 ? '#fff' : '#042C1E'
+  }
+
+  const CELL_W = 44
+  const CELL_H = 28
+  const LABEL_W = 76
+
+  const currentProvider = visible[pageIndex]
+
+  const renderHeatmap = (provider: ProviderTrend, sentiment: 'positif' | 'negatif') => {
+    return (
+      <div style={{ minWidth: LABEL_W + CELL_W * 12 }}>
+        <div style={{ display: 'flex', marginLeft: LABEL_W }}>
+          {MONTHS_LABEL.map((m) => (
+            <div key={`${provider.provider}-${sentiment}-${m}`} style={{ width: CELL_W, textAlign: 'center', fontSize: 10, color: '#3D6B5C', fontWeight: 500, paddingBottom: 4 }}>
+              {m}
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{ width: LABEL_W, fontSize: 11, color: '#085041', fontWeight: 500, paddingRight: 8, textAlign: 'right', flexShrink: 0 }}>
+            {sentiment === 'positif' ? 'Positif' : 'Negatif'}
+          </div>
+          {provider.points.map((p, col) => {
+            const value = sentiment === 'positif' ? p.pos_pct : p.neg_pct
+            const total = p.total
+            const isHovered = hovered?.provider === provider.provider && hovered?.sentiment === sentiment && hovered?.col === col
+            return (
+              <div
+                key={`${provider.provider}-${sentiment}-${col}`}
+                onMouseEnter={() => setHovered({ provider: provider.provider, sentiment, col })}
+                onMouseLeave={() => setHovered(null)}
                 style={{
-                  display: 'block', width: '100%', padding: '9px 16px',
-                  textAlign: 'left', fontSize: 13, border: 'none', cursor: 'pointer',
-                  color: p === selectedProvider ? '#1D9E75' : '#042C1E',
-                  background: p === selectedProvider ? '#E1F5EE' : 'transparent',
-                  fontWeight: p === selectedProvider ? 500 : 400,
+                  width: CELL_W,
+                  height: CELL_H,
+                  background: getColor(value, total, sentiment),
+                  borderRadius: 4,
+                  margin: '0 1px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative',
+                  transform: isHovered ? 'scale(1.08)' : 'scale(1)',
+                  transition: 'transform 0.1s',
+                  boxShadow: isHovered ? '0 2px 8px rgba(0,0,0,0.15)' : 'none',
                 }}
               >
-                {p === 'Semua' ? 'Semua Provider' : p}
-              </button>
-            ))}
+                {total > 0 && (
+                  <span style={{ fontSize: 9, color: textColor(value, total), fontWeight: 600 }}>
+                    {value.toFixed(0)}%
+                  </span>
+                )}
+                {isHovered && total > 0 && (
+                  <div style={{
+                    position: 'absolute', bottom: 'calc(100% + 6px)', left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: '#042C1E', color: '#fff', borderRadius: 6,
+                    padding: '6px 10px', fontSize: 10, whiteSpace: 'nowrap',
+                    zIndex: 10, pointerEvents: 'none',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                  }}>
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>{provider.provider} · {sentiment === 'positif' ? 'Positif' : 'Negatif'} · {MONTHS_LABEL[col]}</div>
+                    <div style={{ color: sentiment === 'positif' ? '#5DCAA5' : '#E24B4A' }}>
+                      {sentiment === 'positif' ? 'Positif' : 'Negatif'}: {value.toFixed(1)}% ({sentiment === 'positif' ? p.pos : p.neg})
+                    </div>
+                    <div style={{ color: '#aaa' }}>Total: {p.total} kalimat</div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+        <div>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#085041', marginBottom: 4 }}>
+            Tren Sentimen per Bulan
+          </p>
+          <p style={{ fontSize: 11, color: '#3D6B5C' }}>
+            Pagination provider tersinkron: halaman {pageIndex + 1} dari {visible.length}
+          </p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            onClick={() => setPageIndex((prev) => Math.max(0, prev - 1))}
+            disabled={pageIndex === 0}
+            style={{
+              border: '1px solid #B8DDD2', background: pageIndex === 0 ? '#F4FBF8' : '#fff', color: '#085041',
+              borderRadius: 8, padding: '6px 10px', fontSize: 12, cursor: pageIndex === 0 ? 'not-allowed' : 'pointer',
+            }}
+          >
+            Sebelumnya
+          </button>
+          <span style={{ fontSize: 12, color: '#3D6B5C', minWidth: 110, textAlign: 'center' }}>
+            {currentProvider?.provider ?? '-'}
+          </span>
+          <button
+            onClick={() => setPageIndex((prev) => Math.min(visible.length - 1, prev + 1))}
+            disabled={pageIndex >= visible.length - 1}
+            style={{
+              border: '1px solid #B8DDD2', background: pageIndex >= visible.length - 1 ? '#F4FBF8' : '#fff', color: '#085041',
+              borderRadius: 8, padding: '6px 10px', fontSize: 12, cursor: pageIndex >= visible.length - 1 ? 'not-allowed' : 'pointer',
+            }}
+          >
+            Berikutnya
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 10, color: '#3D6B5C' }}>Skala heatmap:</span>
+        {[
+          { color: '#DDF5EA', label: 'Rendah' },
+          { color: '#5DCAA5', label: 'Sedang' },
+          { color: '#1D9E75', label: 'Tinggi' },
+          { color: '#F4F4F4', label: 'No data', border: '1px solid #ddd' },
+        ].map(({ color, label, border }) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 12, height: 12, borderRadius: 3, background: color, border: border ?? 'none', flexShrink: 0 }} />
+            <span style={{ fontSize: 10, color: '#3D6B5C' }}>{label}</span>
+          </div>
+        ))}
+        <span style={{ fontSize: 10, color: '#3D6B5C', marginLeft: 8 }}>| Negatif memakai skala merah</span>
+      </div>
+
+      <div style={{ border: '1px solid #E1F5EE', borderRadius: 14, background: '#fff', padding: 14, boxShadow: '0 6px 18px rgba(8,80,65,0.04)' }}>
+        {currentProvider ? (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 600, color: '#085041', marginBottom: 4 }}>{currentProvider.provider}</p>
+                <p style={{ fontSize: 11, color: '#3D6B5C' }}>
+                  Provider berhasil disinkronisasi · {currentProvider.points.filter((p) => p.total > 0).length} bulan data · {currentProvider.points.reduce((sum, point) => sum + point.total, 0)} kalimat
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11, color: '#1A7A43', background: '#EAF6EF', borderRadius: 999, padding: '4px 10px', fontWeight: 500 }}>
+                  Positif {currentProvider.points.reduce((sum, point) => sum + point.pos, 0)}
+                </span>
+                <span style={{ fontSize: 11, color: '#C0392B', background: '#FEF0F0', borderRadius: 999, padding: '4px 10px', fontWeight: 500 }}>
+                  Negatif {currentProvider.points.reduce((sum, point) => sum + point.neg, 0)}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 500, color: '#1A7A43', marginBottom: 8 }}>Heatmap Positif</p>
+                {renderHeatmap(currentProvider, 'positif')}
+              </div>
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 500, color: '#C0392B', marginBottom: 8 }}>Heatmap Negatif</p>
+                {renderHeatmap(currentProvider, 'negatif')}
+              </div>
+            </div>
+          </>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+// ── Kinerja provider: badge tren berdasarkan slope neg_pct ─────
+function ProviderTrendBadges({ points }: { points: TrendPoint[] }) {
+  if (points.length < 2) return null
+
+  const first = points[0].neg_pct
+  const last  = points[points.length - 1].neg_pct
+  const delta = last - first
+  const abs   = Math.abs(delta).toFixed(1)
+
+  if (Math.abs(delta) < 1) {
+    return (
+      <span style={{ fontSize: 11, color: '#A0750A', background: '#FEF9EC', borderRadius: 6, padding: '2px 8px', fontWeight: 500 }}>
+        → Stabil
+      </span>
+    )
+  }
+  return delta < 0 ? (
+    <span style={{ fontSize: 11, color: '#1A7A43', background: '#EAF6EF', borderRadius: 6, padding: '2px 8px', fontWeight: 500 }}>
+      ↓ Membaik {abs}pp
+    </span>
+  ) : (
+    <span style={{ fontSize: 11, color: '#C0392B', background: '#FEF0F0', borderRadius: 6, padding: '2px 8px', fontWeight: 500 }}>
+      ↑ Memburuk {abs}pp
+    </span>
+  )
+}
+
+
+// ── Grafik Temporal Sentimen Berbobot Expert ──────────────────
+interface RawTrendRow {
+  month: string
+  provider: string
+  aspect: string
+  neg: number
+  pos: number
+  total: number
+}
+
+function WeightedTemporalChart({ rawTrend, loading, selectedProvider }: {
+  rawTrend: RawTrendRow[]
+  loading: boolean
+  selectedProvider: string
+}) {
+  const MONTHS = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Ags','Sep','Okt','Nov','Des']
+
+  // Hover state untuk garis provider: pertebal garis + tampilkan tooltip nama provider
+  const [hoveredLine, setHoveredLine] = useState<string | null>(null)
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null)
+  const [hoveredPoint, setHoveredPoint] = useState<{ provider: string; color: string; month: string; total: number } | null>(null)
+  const chartContainerRef = useRef<HTMLDivElement>(null)
+
+  const handleLineHover = (provider: string, e: React.MouseEvent) => {
+    setHoveredLine(provider)
+    const rect = chartContainerRef.current?.getBoundingClientRect()
+    if (rect) {
+      setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top })
+    }
+  }
+
+  // Deteksi tahun dari data (bukan hardcode currentYear)
+  const displayYear = useMemo(() => {
+    if (rawTrend.length === 0) return String(new Date().getFullYear())
+    const counted: Record<string, number> = {}
+    for (const r of rawTrend) {
+      const y = r.month.substring(0, 4)
+      counted[y] = (counted[y] || 0) + 1
+    }
+    return Object.entries(counted).sort((a, b) => b[1] - a[1])[0][0]
+  }, [rawTrend])
+
+  const chartData = useMemo(() => {
+    // Kelompokkan: provider → month → aspect → {neg, pos, total}
+    const map: Record<string, Record<string, Record<string, {neg:number; pos:number; total:number}>>> = {}
+    for (const row of rawTrend) {
+      if (!map[row.provider]) map[row.provider] = {}
+      if (!map[row.provider][row.month]) map[row.provider][row.month] = {}
+      map[row.provider][row.month][row.aspect] = {
+        neg: row.neg || 0, pos: row.pos || 0, total: row.total || 0,
+      }
+    }
+
+    return Object.entries(map)
+      .filter(([prov]) => selectedProvider === 'Semua' || prov === selectedProvider)
+      .map(([prov, monthMap]) => {
+        const scores: (number | null)[] = []
+        const totals: number[] = []
+        for (let m = 1; m <= 12; m++) {
+          const key = `${displayYear}-${String(m).padStart(2, '0')}`
+          const aspectData = monthMap[key]
+          if (!aspectData) { scores.push(null); totals.push(0); continue }
+
+          let weightedScore = 0
+          let hasData = false
+          let monthTotal = 0
+          for (const [aspect, weight] of Object.entries(EXPERT_WEIGHTS)) {
+            const d = aspectData[aspect]
+            if (d && d.total > 0) {
+              weightedScore += ((d.pos - d.neg) / d.total) * weight
+              hasData = true
+              monthTotal += d.total
+            }
+          }
+          scores.push(hasData ? Math.round(weightedScore * 1000) / 1000 : null)
+          totals.push(monthTotal)
+        }
+        return { provider: prov, color: PROVIDER_COLORS[prov] ?? '#999', scores, totals }
+      })
+  }, [rawTrend, selectedProvider, displayYear])
+
+  // SVG dimensions
+  const W = 640, H = 200, ML = 44, MR = 16, MT = 14, MB = 28
+  const chartW = W - ML - MR
+  const chartH = H - MT - MB
+  const xPos = (i: number) => ML + (i / 11) * chartW
+  const yPos = (v: number) => MT + ((1 - v) / 2) * chartH // map -1..1 → chartH..0
+
+  if (loading) return (
+    <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: '#3D6B5C', fontSize: 12 }}>
+      <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+      Memuat grafik sentimen...
+    </div>
+  )
+
+  if (chartData.length === 0) return (
+    <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3D6B5C', fontSize: 12, flexDirection: 'column', gap: 4 }}>
+      <span style={{ fontSize: 20 }}>📈</span>
+      <span>Belum ada data untuk ditampilkan</span>
+      <span style={{ fontSize: 11, color: '#A0750A' }}>Lakukan sinkronisasi terlebih dahulu</span>
+    </div>
+  )
+
+  const gridValues = [-1, 0, 1]
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+        <div>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#085041', marginBottom: 2 }}>
+            Tren Sentimen Temporal (Expert Weight) · {displayYear}
+          </p>
+          <p style={{ fontSize: 11, color: '#3D6B5C' }}>
+            Skor agregat bulanan per provider · skala −1 (negatif) hingga +1 (positif) · ternormalisasi per volume komentar
+          </p>
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', marginBottom: 10 }}>
+        {chartData.map(d => (
+          <div key={d.provider} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ width: 22, height: 3, borderRadius: 2, background: d.color }} />
+            <span style={{ fontSize: 11, color: '#3D6B5C' }}>{d.provider}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* SVG Chart */}
+      <div ref={chartContainerRef} style={{ position: 'relative' }}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+          {/* Grid lines & Y labels */}
+          {gridValues.map(v => (
+            <g key={v}>
+              <line
+                x1={ML} y1={yPos(v)} x2={W - MR} y2={yPos(v)}
+                stroke={v === 0 ? '#085041' : '#B8DDD2'}
+                strokeWidth={v === 0 ? 1.5 : 0.7}
+                strokeDasharray={v === 0 ? undefined : '3 3'}
+              />
+              <text x={ML - 6} y={yPos(v) + 3.5} textAnchor="end" fontSize={10} fontWeight={v === 0 ? '600' : '400'} fill="#3D6B5C">
+                {v > 0 ? `+${v}` : `${v}`}
+              </text>
+            </g>
+          ))}
+
+          {/* X axis month labels */}
+          {MONTHS.map((m, i) => (
+            <text key={m} x={xPos(i)} y={H - 7} textAnchor="middle" fontSize={9} fill="#3D6B5C">
+              {m}
+            </text>
+          ))}
+
+          {/* Lines per provider */}
+          {chartData.map(d => {
+            const pts = d.scores
+              .map((v, i) => v !== null ? { x: xPos(i), y: yPos(v), score: v, total: d.totals[i], month: MONTHS[i] } : null)
+              .filter(Boolean) as { x: number; y: number; score: number; total: number; month: string }[]
+
+            if (pts.length === 0) return null
+            const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+
+            const isHovered = hoveredLine === d.provider
+            const isDimmed = hoveredLine !== null && !isHovered
+
+            return (
+              <g key={d.provider}>
+                {/* Garis tampak (pertebal + terangi saat hover) */}
+                <path
+                  d={pathD}
+                  fill="none"
+                  stroke={d.color}
+                  strokeWidth={isHovered ? 4 : 2}
+                  strokeOpacity={isDimmed ? 0.25 : 1}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  style={{ transition: 'stroke-width 0.15s ease, stroke-opacity 0.15s ease' }}
+                  pointerEvents="none"
+                />
+                {/* Hit-area transparan lebih lebar supaya mudah di-hover */}
+                <path
+                  d={pathD}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={12}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  onMouseEnter={(e) => handleLineHover(d.provider, e)}
+                  onMouseMove={(e) => handleLineHover(d.provider, e)}
+                  onMouseLeave={() => { setHoveredLine(null); setTooltipPos(null) }}
+                  style={{ cursor: 'pointer' }}
+                />
+                {/* Titik data — radius mengikuti jumlah data (n) pada bulan tsb */}
+                {pts.map((p, i) => (
+                  <circle
+                    key={i} cx={p.x} cy={p.y}
+                    r={isHovered ? 4 : 3}
+                    fill={d.color} stroke="#fff" strokeWidth={1.5}
+                    strokeOpacity={isDimmed ? 0.25 : 1}
+                    fillOpacity={isDimmed ? 0.25 : 1}
+                    style={{ transition: 'r 0.15s ease, fill-opacity 0.15s ease', cursor: 'pointer' }}
+                    onMouseEnter={(e) => {
+                      setHoveredLine(d.provider)
+                      setHoveredPoint({ provider: d.provider, color: d.color, month: p.month, total: p.total })
+                      const rect = chartContainerRef.current?.getBoundingClientRect()
+                      if (rect) setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top })
+                    }}
+                    onMouseMove={(e) => {
+                      const rect = chartContainerRef.current?.getBoundingClientRect()
+                      if (rect) setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top })
+                    }}
+                    onMouseLeave={() => { setHoveredLine(null); setHoveredPoint(null); setTooltipPos(null) }}
+                  />
+                ))}
+              </g>
+            )
+          })}
+        </svg>
+
+        {/* Tooltip detail titik (provider, bulan, skor, jumlah data) saat titik di-hover */}
+        {hoveredPoint && tooltipPos && (
+          <div style={{
+            position: 'absolute',
+            left: tooltipPos.x,
+            top: tooltipPos.y - 14,
+            transform: 'translate(-50%, -100%)',
+            background: '#042C1E',
+            color: '#fff',
+            borderRadius: 6,
+            padding: '8px 10px',
+            fontSize: 11,
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+            zIndex: 10,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, marginBottom: 3 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: hoveredPoint.color, flexShrink: 0 }} />
+              {hoveredPoint.provider} · {hoveredPoint.month}
+            </div>
+            <div>n = {hoveredPoint.total} komentar{hoveredPoint.total < 10 ? ' ⚠ data sedikit' : ''}</div>
+          </div>
+        )}
+
+        {/* Tooltip nama provider saat garis (bukan titik) di-hover */}
+        {hoveredLine && !hoveredPoint && tooltipPos && (
+          <div style={{
+            position: 'absolute',
+            left: tooltipPos.x,
+            top: tooltipPos.y - 14,
+            transform: 'translate(-50%, -100%)',
+            background: '#042C1E',
+            color: '#fff',
+            borderRadius: 6,
+            padding: '6px 10px',
+            fontSize: 11,
+            fontWeight: 600,
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+            zIndex: 10,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}>
+            <span style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: chartData.find(d => d.provider === hoveredLine)?.color ?? '#999',
+              flexShrink: 0,
+            }} />
+            Provider: {hoveredLine}
           </div>
         )}
       </div>
 
+      {/* Keterangan bobot */}
+      <p style={{ fontSize: 10, color: '#3D6B5C', marginTop: 8, opacity: 0.7 }}>
+        Bobot aspek berdasarkan expert judgment: Kecepatan · Stabilitas · Penanganan · Keamanan (15,2%) · Layanan Pelanggan (12,1%) · Harga · Kemudahan · Instalasi (9,1%)
+      </p>
+      <p style={{ fontSize: 10, color: '#3D6B5C', marginTop: 4, opacity: 0.7 }}>
+        Arahkan kursor ke titik untuk melihat jumlah komentar (n) pada bulan tsb — n kecil berarti hati-hati menafsirkan lonjakan skornya
+      </p>
+    </div>
+  )
+}
+
+// ── Breakdown Skor Sentimen per Aspek ────────────────────────
+function AspectBreakdownTable({ rawTrend, loading, selectedProvider }: {
+  rawTrend: RawTrendRow[]
+  loading: boolean
+  selectedProvider: string
+}) {
+  const ASPECTS = Object.keys(EXPERT_WEIGHTS)
+
+  const breakdown = useMemo(() => {
+    const map: Record<string, Record<string, {neg:number; pos:number; total:number}>> = {}
+    for (const row of rawTrend) {
+      const prov = row.provider
+      if (selectedProvider !== 'Semua' && prov !== selectedProvider) continue
+      if (!map[prov]) map[prov] = {}
+      const asp = row.aspect
+      if (!map[prov][asp]) map[prov][asp] = { neg: 0, pos: 0, total: 0 }
+      map[prov][asp].neg   += row.neg   || 0
+      map[prov][asp].pos   += row.pos   || 0
+      map[prov][asp].total += row.total || 0
+    }
+
+    // Hitung skor per aspek per provider
+    return Object.entries(map).map(([prov, aspMap]) => ({
+      provider: prov,
+      color: PROVIDER_COLORS[prov] ?? '#999',
+      aspects: ASPECTS.map(asp => {
+        const d = aspMap[asp] ?? { neg: 0, pos: 0, total: 0 }
+        const score = d.total > 0 ? (d.pos - d.neg) / d.total : null
+        const weight = EXPERT_WEIGHTS[asp]
+        return { asp, score, weight, contribution: score !== null ? score * weight : null, total: d.total }
+      })
+    }))
+  }, [rawTrend, selectedProvider])
+
+  const scoreColor = (v: number | null) => {
+    if (v === null) return '#999'
+    if (v > 0.2)  return '#1A7A43'
+    if (v < -0.2) return '#C0392B'
+    return '#A0750A'
+  }
+
+  if (loading) return (
+    <div style={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3D6B5C', fontSize: 12 }}>
+      <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> &nbsp; Memuat...
+    </div>
+  )
+
+  if (breakdown.length === 0) return null
+
+  return (
+    <div>
+      <div style={{ marginBottom: 12 }}>
+        <p style={{ fontSize: 13, fontWeight: 600, color: '#085041', marginBottom: 2 }}>
+          Breakdown Skor Sentimen per Aspek
+        </p>
+        <p style={{ fontSize: 11, color: '#3D6B5C' }}>
+          Skor = (Positif − Negatif) / Total · ternormalisasi per volume · kontribusi = skor × bobot expert
+        </p>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+          <thead>
+            <tr style={{ borderBottom: '2px solid #B8DDD2' }}>
+              <th style={{ textAlign: 'left', padding: '8px 10px', color: '#3D6B5C', fontWeight: 600 }}>Aspek</th>
+              <th style={{ textAlign: 'center', padding: '8px 10px', color: '#3D6B5C', fontWeight: 600 }}>Bobot</th>
+              {breakdown.map(p => (
+                <th key={p.provider} style={{ textAlign: 'center', padding: '8px 10px', color: p.color, fontWeight: 600 }}>
+                  {p.provider}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {ASPECTS.map((asp, i) => (
+              <tr key={asp} style={{ borderBottom: '1px solid #F4FBF8', background: i % 2 === 0 ? '#FAFFFE' : '#fff' }}>
+                <td style={{ padding: '8px 10px', color: '#042C1E', fontWeight: 500 }}>{asp}</td>
+                <td style={{ padding: '8px 10px', textAlign: 'center', color: '#3D6B5C' }}>
+                  {(EXPERT_WEIGHTS[asp] * 100).toFixed(1)}%
+                </td>
+                {breakdown.map(p => {
+                  const a = p.aspects.find(x => x.asp === asp)
+                  return (
+                    <td key={p.provider} style={{ padding: '8px 10px', textAlign: 'center' }}>
+                      {a?.score !== null && a?.score !== undefined ? (
+                        <div>
+                          <span style={{ fontWeight: 600, color: scoreColor(a.score) }}>
+                            {a.score > 0 ? '+' : ''}{a.score.toFixed(2)}
+                          </span>
+                          <div style={{ fontSize: 10, color: '#888', marginTop: 1 }}>
+                            {a.total} kalimat
+                          </div>
+                        </div>
+                      ) : (
+                        <span style={{ color: '#ccc' }}>—</span>
+                      )}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+            {/* Baris total agregat */}
+            <tr style={{ borderTop: '2px solid #B8DDD2', background: '#E1F5EE' }}>
+              <td style={{ padding: '10px 10px', fontWeight: 700, color: '#085041' }}>Skor Agregat</td>
+              <td style={{ padding: '10px 10px', textAlign: 'center', color: '#3D6B5C', fontWeight: 600 }}>100%</td>
+              {breakdown.map(p => {
+                const total = p.aspects.reduce((sum, a) => sum + (a.contribution ?? 0), 0)
+                return (
+                  <td key={p.provider} style={{ padding: '10px 10px', textAlign: 'center' }}>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: scoreColor(total) }}>
+                      {total > 0 ? '+' : ''}{total.toFixed(3)}
+                    </span>
+                  </td>
+                )
+              })}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+export default function OverviewPage() {
+  const [selectedProvider, setSelectedProvider] = useState<ProviderKey>('Semua')
+
+  // Tren per provider dari /stats
+  const [providerTrends, setProviderTrends] = useState<ProviderTrend[]>([])
+  const [rawTrend, setRawTrend]             = useState<RawTrendRow[]>([])
+  const [trendLoading, setTrendLoading]     = useState(true)
+  const syncedProviders = providerTrends.map((providerTrend) => providerTrend.provider as ProviderKey)
+  const [analysisHistory, setAnalysisHistory] = useState<AnalyzeHistoryRow[]>(ANALYZE_HISTORY_FALLBACK)
+
+  useEffect(() => {
+    if (selectedProvider !== 'Semua' && syncedProviders.length > 0 && !syncedProviders.includes(selectedProvider)) {
+      setSelectedProvider('Semua')
+    }
+  }, [selectedProvider, syncedProviders])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const readHistory = () => {
+      const raw = window.localStorage.getItem(ANALYSIS_HISTORY_KEY)
+      if (!raw) {
+        setAnalysisHistory(ANALYZE_HISTORY_FALLBACK)
+        return
+      }
+
+      try {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setAnalysisHistory(parsed.slice(0, 8))
+          return
+        }
+      } catch {
+        // fallback below
+      }
+
+      setAnalysisHistory(ANALYZE_HISTORY_FALLBACK)
+    }
+
+    readHistory()
+
+    const handleHistoryUpdate = () => readHistory()
+    window.addEventListener('analysishistoryupdated', handleHistoryUpdate)
+    window.addEventListener('storage', handleHistoryUpdate)
+
+    return () => {
+      window.removeEventListener('analysishistoryupdated', handleHistoryUpdate)
+      window.removeEventListener('storage', handleHistoryUpdate)
+    }
+  }, [])
+
+  // Fetch sekali saja saat mount — filter dilakukan di chart
+  useEffect(() => {
+    setTrendLoading(true)
+    fetch(`${API_BASE}/api/stats`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.status !== 'ok' || !json.trend?.length) {
+          setProviderTrends([])
+          setRawTrend([])
+          return
+        }
+        // Simpan raw trend untuk grafik berbobot
+        setRawTrend(json.trend)
+        const currentYear = new Date().getFullYear()
+        const allProviders = [...new Set<string>(json.trend.map((r: any) => r.provider))]
+
+        const trends: ProviderTrend[] = allProviders.map((prov) => {
+          // Inisialisasi 12 bulan kosong
+          const byMonth: Record<string, { neg: number; pos: number; neu: number; total: number }> = {}
+          for (let m = 1; m <= 12; m++) {
+            byMonth[`${currentYear}-${String(m).padStart(2, '0')}`] = { neg: 0, pos: 0, neu: 0, total: 0 }
+          }
+          // Isi dari API
+          for (const row of json.trend.filter((r: any) => r.provider === prov)) {
+            if (!byMonth[row.month]) byMonth[row.month] = { neg: 0, pos: 0, neu: 0, total: 0 }
+            byMonth[row.month].neg   += row.neg   ?? 0
+            byMonth[row.month].pos   += row.pos   ?? 0
+            byMonth[row.month].total += row.total ?? 0
+          }
+          const points: TrendPoint[] = Object.keys(byMonth).sort().map((month) => {
+            const m = byMonth[month]
+            const t = m.total || 1
+            return {
+              month, neg: m.neg, pos: m.pos, neu: m.neu ?? 0, total: m.total,
+              neg_pct: m.total > 0 ? Math.round((m.neg / t) * 1000) / 10 : 0,
+              pos_pct: m.total > 0 ? Math.round((m.pos / t) * 1000) / 10 : 0,
+            }
+          })
+          return { provider: prov, color: PROVIDER_COLORS[prov] ?? '#999', points }
+        })
+        setProviderTrends(trends)
+      })
+      .catch(() => setProviderTrends([]))
+      .finally(() => setTrendLoading(false))
+  }, [])
+
+  const filteredTrends = selectedProvider === 'Semua'
+    ? providerTrends
+    : providerTrends.filter(p => p.provider === selectedProvider)
+
+  const summary = filteredTrends.reduce(
+    (acc, provider) => {
+      provider.points.forEach((point) => {
+        acc.total += point.total
+        acc.neg += point.neg
+        acc.neu += point.neu
+        acc.pos += point.pos
+      })
+      return acc
+    },
+    { total: 0, neg: 0, neu: 0, pos: 0 }
+  )
+
+  const statCards = [
+    { label: 'Total Kalimat',     value: String(summary.total), change: '100%', up: true, icon: Database },
+    { label: 'Sentimen Negatif', value: String(summary.neg),   change: summary.total > 0 ? `${((summary.neg / summary.total) * 100).toFixed(1)}%` : '0%', up: false, icon: TrendingDown },
+    { label: 'Sentimen Netral',  value: String(summary.neu),   change: summary.total > 0 ? `${((summary.neu / summary.total) * 100).toFixed(1)}%` : '0%', up: true, icon: Activity },
+    { label: 'Sentimen Positif', value: String(summary.pos),   change: summary.total > 0 ? `${((summary.pos / summary.total) * 100).toFixed(1)}%` : '0%', up: true, icon: TrendingUp },
+  ]
+
+  return (
+    <div className="animate-fade-in">
+
       {/* ── Stat Cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+        {selectedProvider !== 'Semua' && (
+          <div style={{ gridColumn: '1 / -1', marginBottom: 4 }}>
+            <span style={{ fontSize: 12, color: '#3D6B5C', background: '#E1F5EE', padding: '4px 12px', borderRadius: 100, fontWeight: 500 }}>
+              📡 Provider: {selectedProvider}
+            </span>
+          </div>
+        )}
         {statCards.map((card, i) => {
           const Icon = card.icon
           return (
@@ -173,107 +896,29 @@ export default function OverviewPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 12 }}>
                 {card.up ? <TrendingUp size={11} color="#1A7A43" /> : <TrendingDown size={11} color="#C0392B" />}
                 <span style={{ fontSize: 11, color: card.up ? '#1A7A43' : '#C0392B', fontWeight: 500 }}>{card.change}</span>
-                <span style={{ fontSize: 11, color: '#3D6B5C' }}>dari total klausa</span>
+                <span style={{ fontSize: 11, color: '#3D6B5C' }}>dari total kalimat</span>
               </div>
             </div>
           )
         })}
       </div>
 
-      {/* ── Charts Row ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 16, marginBottom: 24 }}>
+      {/* ── GRAFIK TEMPORAL BERBOBOT ── */}
+      <div className="card animate-fade-up anim-delay-1" style={{ marginBottom: 24 }}>
+        <WeightedTemporalChart
+          rawTrend={rawTrend}
+          loading={trendLoading}
+          selectedProvider={selectedProvider}
+        />
+      </div>
 
-        {/* Provider distribution (only on Semua) / Aspek breakdown (on specific provider) */}
-        <div className="card animate-fade-up anim-delay-2">
-          {selectedProvider === 'Semua' ? (
-            <>
-              <p style={{ fontSize: 13, fontWeight: 500, color: '#085041', marginBottom: 4 }}>Distribusi Klausa per Provider</p>
-              <p style={{ fontSize: 11, color: '#3D6B5C', marginBottom: 20 }}>Total 366 klausa dari 7 provider ISP</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {PROVIDER_BARS.map((p) => (
-                  <div key={p.name}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontSize: 12, color: '#3D6B5C', fontWeight: 500 }}>{p.name}</span>
-                      <span style={{ fontSize: 11, color: '#3D6B5C' }}>{p.total} klausa</span>
-                    </div>
-                    <div style={{ height: 8, background: '#E1F5EE', borderRadius: 100, overflow: 'hidden' }}>
-                      <div style={{ width: `${p.fill}%`, height: '100%', background: '#1D9E75', borderRadius: 100 }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <>
-              <p style={{ fontSize: 13, fontWeight: 500, color: '#085041', marginBottom: 4 }}>
-                Breakdown Aspek — {selectedProvider}
-              </p>
-              <p style={{ fontSize: 11, color: '#3D6B5C', marginBottom: 20 }}>
-                {d.total} klausa · Negatif {d.neg_pct}% · Netral {d.neu_pct}% · Positif {d.pos_pct}%
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {ASPECTS.map((asp) => {
-                  const neg = d.asp_neg[asp] ?? 0
-                  const pos = d.asp_pos[asp] ?? 0
-                  const total = neg + pos
-                  if (total === 0) return null
-                  const maxAsp = Math.max(...ASPECTS.map((a) => (d.asp_neg[a] ?? 0) + (d.asp_pos[a] ?? 0)))
-                  return (
-                    <div key={asp}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <span style={{ fontSize: 12, color: '#3D6B5C', fontWeight: 500 }}>{asp}</span>
-                        <span style={{ fontSize: 11, color: '#3D6B5C' }}>
-                          <span style={{ color: '#C0392B' }}>↓{neg}</span>
-                          {pos > 0 && <span style={{ color: '#1D9E75', marginLeft: 6 }}>↑{pos}</span>}
-                        </span>
-                      </div>
-                      <div style={{ height: 8, background: '#E1F5EE', borderRadius: 100, overflow: 'hidden' }}>
-                        <div style={{ width: `${(total / maxAsp) * 100}%`, height: '100%', background: ASPECT_COLORS[asp], borderRadius: 100 }} />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Donut — Traffic by Aspect */}
-        <div className="card animate-fade-up anim-delay-3" style={{ display: 'flex', flexDirection: 'column' }}>
-          <p style={{ fontSize: 13, fontWeight: 500, color: '#085041', marginBottom: 4 }}>Traffic by Aspek</p>
-          <p style={{ fontSize: 11, color: '#3D6B5C', marginBottom: 16 }}>
-            {selectedProvider === 'Semua' ? '366 klausa total' : `${d.total} klausa · ${selectedProvider}`}
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-            <svg viewBox="0 0 100 100" width={100} height={100}>
-              {(() => {
-                let offset = 0
-                return trafficByAspect.map((item, i) => {
-                  const circumference = 2 * Math.PI * 35
-                  const strokeDash = (item.pct / 100) * circumference
-                  const el = (
-                    <circle key={i} cx="50" cy="50" r="35" fill="none"
-                      stroke={item.color} strokeWidth="12"
-                      strokeDasharray={`${strokeDash} ${circumference - strokeDash}`}
-                      strokeDashoffset={-offset} transform="rotate(-90 50 50)"
-                    />
-                  )
-                  offset += strokeDash
-                  return el
-                })
-              })()}
-            </svg>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            {trafficByAspect.map((item) => (
-              <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
-                <span style={{ fontSize: 11, color: '#3D6B5C', flex: 1 }}>{item.label}</span>
-                <span style={{ fontSize: 11, fontWeight: 500, color: '#085041' }}>{item.pct}%</span>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* ── BREAKDOWN SKOR PER ASPEK ── */}
+      <div className="card animate-fade-up anim-delay-2" style={{ marginBottom: 24 }}>
+        <AspectBreakdownTable
+          rawTrend={rawTrend}
+          loading={trendLoading}
+          selectedProvider={selectedProvider}
+        />
       </div>
 
       {/* ── Analyze History ── */}
@@ -283,14 +928,14 @@ export default function OverviewPage() {
             <p style={{ fontSize: 13, fontWeight: 500, color: '#085041' }}>Analyze History</p>
             <p style={{ fontSize: 11, color: '#3D6B5C' }}>Riwayat analisis komentar terbaru</p>
           </div>
-          <a href="/dashboard/analisis" style={{ fontSize: 12, color: '#1D9E75', textDecoration: 'none', fontWeight: 500 }}>
+          <Link href="/dashboard/analisis" style={{ fontSize: 12, color: '#1D9E75', textDecoration: 'none', fontWeight: 500 }}>
             Lihat Semua →
-          </a>
+          </Link>
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: '1px solid #B8DDD2' }}>
-              {['Komentar', 'Waktu', 'Status', 'Aspek', 'Sentimen'].map((h) => (
+              {['Komentar', 'Waktu', 'Status', 'Aspek', 'Sentimen', 'Aksi'].map((h) => (
                 <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 500, color: '#3D6B5C', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
                   {h}
                 </th>
@@ -298,7 +943,7 @@ export default function OverviewPage() {
             </tr>
           </thead>
           <tbody>
-            {ANALYZE_HISTORY.map((row, i) => (
+            {analysisHistory.map((row, i) => (
               <tr key={i} style={{ borderBottom: '1px solid #F4FBF8' }}>
                 <td style={{ padding: '11px 12px', fontSize: 13, color: '#042C1E', maxWidth: 280 }}>
                   <span style={{ display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
@@ -321,11 +966,23 @@ export default function OverviewPage() {
                     {row.sentiment}
                   </span>
                 </td>
+                <td style={{ padding: '11px 12px' }}>
+                  <Link
+                    href="/dashboard/analisis"
+                    style={{ fontSize: 12, color: '#1D9E75', fontWeight: 500, textDecoration: 'none' }}
+                  >
+                    Buka
+                  </Link>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+      `}</style>
     </div>
   )
 }

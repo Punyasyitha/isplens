@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { Search, ChevronDown } from 'lucide-react'
 
@@ -29,8 +29,37 @@ export default function Topbar() {
   const pathname = usePathname()
   const [selectedISP, setSelectedISP] = useState('Semua Provider')
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const pageInfo = PAGE_TITLES[pathname] ?? { title: 'Dashboard', desc: 'ISPLens' }
+
+  if (!mounted) {
+    return (
+      <header style={{
+        height: 64,
+        background: '#fff',
+        borderBottom: `1px solid ${T.border}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 32px',
+        position: 'sticky', top: 0, zIndex: 40,
+      }}>
+        <div>
+          <h1 style={{
+            fontFamily: 'Playfair Display, serif',
+            fontSize: 17, fontWeight: 600,
+            color: T.primary, letterSpacing: '-0.3px', lineHeight: 1.2,
+          }}>
+            Dashboard
+          </h1>
+          <p style={{ fontSize: 11, color: T.textMuted, marginTop: 1 }}>ISPLens</p>
+        </div>
+      </header>
+    )
+  }
 
   // Dropdown provider hanya tampil di halaman Statistik Data
   // const showProviderDropdown = pathname === '/dashboard/statistik-data'

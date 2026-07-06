@@ -31,9 +31,18 @@ const SENTIMENT_STYLE: Record<string, { bg: string; color: string }> = {
 const EXAMPLE_COMMENTS = [
   'jaringan bagus namun paket mahal',
   'Internet cepat tapi CS tidak responsif sama sekali',
-  'Instalasi cepat, harga sesuai, jaringan stabil banget',
+  'Download cepat dan jaringan stabil banget, namun penanganannya susah',
   'Sinyal sering putus dan pelayanan pelanggan lambat sekali merespon',
 ]
+
+const ANALYSIS_HISTORY_KEY = 'isplens_last_analysis_history'
+
+type AnalysisHistoryRow = {
+  text: string
+  time: string
+  aspect: string
+  sentiment: 'Positif' | 'Negatif' | 'Netral'
+}
 
 export default function AnalisisPage() {
   const [inputText, setInputText] = useState('')
@@ -41,6 +50,28 @@ export default function AnalisisPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [hasAnalyzed, setHasAnalyzed] = useState(false)
+
+  const persistHistory = (items: PredictionResult[]) => {
+    if (typeof window === 'undefined') return
+
+    const time = new Date().toLocaleString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+
+    const rows: AnalysisHistoryRow[] = items.map((item) => ({
+      text: item.clause,
+      time,
+      aspect: item.aspect,
+      sentiment: item.sentiment as 'Positif' | 'Negatif' | 'Netral',
+    }))
+
+    localStorage.setItem(ANALYSIS_HISTORY_KEY, JSON.stringify(rows))
+    window.dispatchEvent(new Event('analysishistoryupdated'))
+  }
 
   const handleAnalyze = async () => {
     if (!inputText.trim()) return
@@ -58,17 +89,21 @@ export default function AnalisisPage() {
       if (!response.ok) throw new Error(`HTTP error: ${response.status}`)
 
       const data = await response.json()
-      setResults(data.results ?? [])
+      const finalResults = data.results ?? []
+      setResults(finalResults)
+      persistHistory(finalResults)
       setHasAnalyzed(true)
     } catch (err) {
       // Demo mode: simulate result when backend is offline
-      simulateDemoResult(inputText)
+      const demoResults = simulateDemoResult(inputText)
+      setResults(demoResults)
+      persistHistory(demoResults)
     } finally {
       setIsLoading(false)
     }
   }
 
-  const simulateDemoResult = (text: string) => {
+  const simulateDemoResult = (text: string): PredictionResult[] => {
     // Simple rule-based demo simulation
     const clauses = text.split(/\b(tapi|namun|padahal|sedangkan|dan|sehingga)\b/i)
       .filter((c) => c.trim().length > 3 && !/^(tapi|namun|padahal|sedangkan|dan|sehingga)$/i.test(c.trim()))
@@ -102,8 +137,8 @@ export default function AnalisisPage() {
       sentiment_confidence: 0.75 + Math.random() * 0.24,
     }))
 
-    setResults(demo)
     setHasAnalyzed(true)
+    return demo
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
