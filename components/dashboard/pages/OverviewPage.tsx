@@ -350,6 +350,9 @@ function WeightedTemporalChart({ rawTrend, loading, selectedProvider }: {
 }) {
   const MONTHS = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Ags','Sep','Okt','Nov','Des']
 
+  // Bobot: Expert Weight (hasil kuesioner, disesuaikan kepentingan tiap aspek)
+  const activeWeights = EXPERT_WEIGHTS
+
   // Hover state untuk garis provider: pertebal garis + tampilkan tooltip nama provider
   const [hoveredLine, setHoveredLine] = useState<string | null>(null)
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null)
@@ -399,7 +402,7 @@ function WeightedTemporalChart({ rawTrend, loading, selectedProvider }: {
           let weightedScore = 0
           let hasData = false
           let monthTotal = 0
-          for (const [aspect, weight] of Object.entries(EXPERT_WEIGHTS)) {
+          for (const [aspect, weight] of Object.entries(activeWeights)) {
             const d = aspectData[aspect]
             if (d && d.total > 0) {
               weightedScore += ((d.pos - d.neg) / d.total) * weight
@@ -412,7 +415,7 @@ function WeightedTemporalChart({ rawTrend, loading, selectedProvider }: {
         }
         return { provider: prov, color: PROVIDER_COLORS[prov] ?? '#999', scores, totals }
       })
-  }, [rawTrend, selectedProvider, displayYear])
+  }, [rawTrend, selectedProvider, displayYear, activeWeights])
 
   // SVG dimensions
   const W = 640, H = 200, ML = 44, MR = 16, MT = 14, MB = 28
@@ -441,15 +444,13 @@ function WeightedTemporalChart({ rawTrend, loading, selectedProvider }: {
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
-        <div>
-          <p style={{ fontSize: 13, fontWeight: 600, color: '#085041', marginBottom: 2 }}>
-            Tren Sentimen Temporal (Expert Weight) · {displayYear}
-          </p>
-          <p style={{ fontSize: 11, color: '#3D6B5C' }}>
-            Skor agregat bulanan per provider · skala −1 (negatif) hingga +1 (positif) · ternormalisasi per volume komentar
-          </p>
-        </div>
+      <div style={{ marginBottom: 10 }}>
+        <p style={{ fontSize: 13, fontWeight: 600, color: '#085041', marginBottom: 2 }}>
+          Tren Sentimen Temporal · {displayYear}
+        </p>
+        <p style={{ fontSize: 11, color: '#3D6B5C' }}>
+          Skor agregat bulanan per provider · skala −1 (negatif) hingga +1 (positif) · ternormalisasi per volume komentar
+        </p>
       </div>
 
       {/* Legend */}
@@ -620,129 +621,6 @@ function WeightedTemporalChart({ rawTrend, loading, selectedProvider }: {
   )
 }
 
-// ── Breakdown Skor Sentimen per Aspek ────────────────────────
-function AspectBreakdownTable({ rawTrend, loading, selectedProvider }: {
-  rawTrend: RawTrendRow[]
-  loading: boolean
-  selectedProvider: string
-}) {
-  const ASPECTS = Object.keys(EXPERT_WEIGHTS)
-
-  const breakdown = useMemo(() => {
-    const map: Record<string, Record<string, {neg:number; pos:number; total:number}>> = {}
-    for (const row of rawTrend) {
-      const prov = row.provider
-      if (selectedProvider !== 'Semua' && prov !== selectedProvider) continue
-      if (!map[prov]) map[prov] = {}
-      const asp = row.aspect
-      if (!map[prov][asp]) map[prov][asp] = { neg: 0, pos: 0, total: 0 }
-      map[prov][asp].neg   += row.neg   || 0
-      map[prov][asp].pos   += row.pos   || 0
-      map[prov][asp].total += row.total || 0
-    }
-
-    // Hitung skor per aspek per provider
-    return Object.entries(map).map(([prov, aspMap]) => ({
-      provider: prov,
-      color: PROVIDER_COLORS[prov] ?? '#999',
-      aspects: ASPECTS.map(asp => {
-        const d = aspMap[asp] ?? { neg: 0, pos: 0, total: 0 }
-        const score = d.total > 0 ? (d.pos - d.neg) / d.total : null
-        const weight = EXPERT_WEIGHTS[asp]
-        return { asp, score, weight, contribution: score !== null ? score * weight : null, total: d.total }
-      })
-    }))
-  }, [rawTrend, selectedProvider])
-
-  const scoreColor = (v: number | null) => {
-    if (v === null) return '#999'
-    if (v > 0.2)  return '#1A7A43'
-    if (v < -0.2) return '#C0392B'
-    return '#A0750A'
-  }
-
-  if (loading) return (
-    <div style={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3D6B5C', fontSize: 12 }}>
-      <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> &nbsp; Memuat...
-    </div>
-  )
-
-  if (breakdown.length === 0) return null
-
-  return (
-    <div>
-      <div style={{ marginBottom: 12 }}>
-        <p style={{ fontSize: 13, fontWeight: 600, color: '#085041', marginBottom: 2 }}>
-          Breakdown Skor Sentimen per Aspek
-        </p>
-        <p style={{ fontSize: 11, color: '#3D6B5C' }}>
-          Skor = (Positif − Negatif) / Total · ternormalisasi per volume · kontribusi = skor × bobot expert
-        </p>
-      </div>
-
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid #B8DDD2' }}>
-              <th style={{ textAlign: 'left', padding: '8px 10px', color: '#3D6B5C', fontWeight: 600 }}>Aspek</th>
-              <th style={{ textAlign: 'center', padding: '8px 10px', color: '#3D6B5C', fontWeight: 600 }}>Bobot</th>
-              {breakdown.map(p => (
-                <th key={p.provider} style={{ textAlign: 'center', padding: '8px 10px', color: p.color, fontWeight: 600 }}>
-                  {p.provider}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {ASPECTS.map((asp, i) => (
-              <tr key={asp} style={{ borderBottom: '1px solid #F4FBF8', background: i % 2 === 0 ? '#FAFFFE' : '#fff' }}>
-                <td style={{ padding: '8px 10px', color: '#042C1E', fontWeight: 500 }}>{asp}</td>
-                <td style={{ padding: '8px 10px', textAlign: 'center', color: '#3D6B5C' }}>
-                  {(EXPERT_WEIGHTS[asp] * 100).toFixed(1)}%
-                </td>
-                {breakdown.map(p => {
-                  const a = p.aspects.find(x => x.asp === asp)
-                  return (
-                    <td key={p.provider} style={{ padding: '8px 10px', textAlign: 'center' }}>
-                      {a?.score !== null && a?.score !== undefined ? (
-                        <div>
-                          <span style={{ fontWeight: 600, color: scoreColor(a.score) }}>
-                            {a.score > 0 ? '+' : ''}{a.score.toFixed(2)}
-                          </span>
-                          <div style={{ fontSize: 10, color: '#888', marginTop: 1 }}>
-                            {a.total} kalimat
-                          </div>
-                        </div>
-                      ) : (
-                        <span style={{ color: '#ccc' }}>—</span>
-                      )}
-                    </td>
-                  )
-                })}
-              </tr>
-            ))}
-            {/* Baris total agregat */}
-            <tr style={{ borderTop: '2px solid #B8DDD2', background: '#E1F5EE' }}>
-              <td style={{ padding: '10px 10px', fontWeight: 700, color: '#085041' }}>Skor Agregat</td>
-              <td style={{ padding: '10px 10px', textAlign: 'center', color: '#3D6B5C', fontWeight: 600 }}>100%</td>
-              {breakdown.map(p => {
-                const total = p.aspects.reduce((sum, a) => sum + (a.contribution ?? 0), 0)
-                return (
-                  <td key={p.provider} style={{ padding: '10px 10px', textAlign: 'center' }}>
-                    <span style={{ fontWeight: 700, fontSize: 13, color: scoreColor(total) }}>
-                      {total > 0 ? '+' : ''}{total.toFixed(3)}
-                    </span>
-                  </td>
-                )
-              })}
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
 export default function OverviewPage() {
   const [selectedProvider, setSelectedProvider] = useState<ProviderKey>('Semua')
 
@@ -906,15 +784,6 @@ export default function OverviewPage() {
       {/* ── GRAFIK TEMPORAL BERBOBOT ── */}
       <div className="card animate-fade-up anim-delay-1" style={{ marginBottom: 24 }}>
         <WeightedTemporalChart
-          rawTrend={rawTrend}
-          loading={trendLoading}
-          selectedProvider={selectedProvider}
-        />
-      </div>
-
-      {/* ── BREAKDOWN SKOR PER ASPEK ── */}
-      <div className="card animate-fade-up anim-delay-2" style={{ marginBottom: 24 }}>
-        <AspectBreakdownTable
           rawTrend={rawTrend}
           loading={trendLoading}
           selectedProvider={selectedProvider}
