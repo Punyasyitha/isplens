@@ -32,7 +32,7 @@ const PROVIDERS = ['Semua', 'IndiHome', 'AXIS', 'IM3', 'by.U', 'Telkomsel', 'Biz
 const PAGE_SIZE = 8
 
 // ── Ganti dengan base URL backend kamu ────────────────────────
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8001'
 
 // Normalisasi nama provider dari backend agar konsisten
 function normalizeProvider(raw: string): string {

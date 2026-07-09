@@ -534,9 +534,9 @@ function WeightedTemporalChart({ rawTrend, loading, selectedProvider }: {
             )
           })}
         </div>
-        {activeAspects.size < ALL_ASPECTS.size && (
+        {activeAspects.size < ALL_ASPECTS.length && (
           <p style={{ fontSize: 10, color: '#A0750A', marginTop: 5 }}>
-            ⚠ Menampilkan {activeAspects.size} dari {ALL_ASPECTS.size} aspek — bobot dinormalisasi ulang
+            ⚠ Menampilkan {activeAspects.size} dari {ALL_ASPECTS.length} aspek — bobot dinormalisasi ulang
           </p>
         )}
       </div>
