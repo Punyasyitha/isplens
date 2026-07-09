@@ -1,0 +1,9 @@
+anthropic
+flask
+flask-cors
+gunicorn
+httpx
+pandas
+psycopg2-binary
+python-dotenv
+requests

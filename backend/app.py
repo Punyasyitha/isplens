@@ -165,6 +165,11 @@ def predict_absa(clause: str, retries: int = 3) -> dict:
 # ENDPOINT — POST /sync
 # ──────────────────────────────────────────────────────────────────────────────
 
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'ok'})
+
+
 @app.route('/api/sync', methods=['POST'])
 def sync():
     """
@@ -411,6 +416,7 @@ def get_stats():
                 provider,
                 aspect,
                 COUNT(*) FILTER (WHERE sentiment='Negatif')     AS neg,
+                COUNT(*) FILTER (WHERE sentiment='Netral')      AS neu,
                 COUNT(*) FILTER (WHERE sentiment='Positif')     AS pos,
                 COUNT(*)                                         AS total
             FROM comments_processed {where}

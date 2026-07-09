@@ -1,0 +1,31 @@
+# Python
+__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+env
+
+# Version control
+.git
+.gitignore
+
+# Env & secrets
+.env
+.env.local
+!.env.example
+
+# Docker files itu sendiri
+Dockerfile*
+.dockerignore
+
+# Cache model / data besar yang tak perlu ikut image (biar dipakai lewat volume saja)
+data/*
+!data/.gitkeep
+*.pt
+*.bin
+*.onnx
+
+# Misc
+.DS_Store
+.vscode

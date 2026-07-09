@@ -1,0 +1,29 @@
+# Dependencies & build output
+node_modules
+.next
+out
+
+# Version control
+.git
+.gitignore
+
+# Env & secrets (jangan pernah ikut ke image)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Docker files itu sendiri
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Folder backend tidak perlu ikut ke build context frontend
+backend
+
+# Misc
+README.md
+DEPLOYMENT.md
+.vscode
+.DS_Store
+npm-debug.log*

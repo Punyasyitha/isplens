@@ -1,0 +1,92 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: isplens-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=isplens
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d isplens"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - isplens-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: isplens-backend:latest
+    container_name: isplens-backend
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=isplens
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - huggingface_cache:/root/.cache/huggingface
+      - ./backend/data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - isplens-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8001}
+    image: isplens-frontend:latest
+    container_name: isplens-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8001}
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - isplens-network
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: isplens-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - isplens-network
+    profiles:
+      - production
+
+networks:
+  isplens-network:
+    driver: bridge
+
+volumes:
+  huggingface_cache:
+  postgres_data:

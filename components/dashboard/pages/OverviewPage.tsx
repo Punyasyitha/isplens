@@ -343,6 +343,8 @@ interface RawTrendRow {
   total: number
 }
 
+const ALL_ASPECTS = Object.keys(EXPERT_WEIGHTS)
+
 function WeightedTemporalChart({ rawTrend, loading, selectedProvider }: {
   rawTrend: RawTrendRow[]
   loading: boolean
@@ -350,8 +352,34 @@ function WeightedTemporalChart({ rawTrend, loading, selectedProvider }: {
 }) {
   const MONTHS = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Ags','Sep','Okt','Nov','Des']
 
-  // Bobot: Expert Weight (hasil kuesioner, disesuaikan kepentingan tiap aspek)
-  const activeWeights = EXPERT_WEIGHTS
+  // Toggle aspek — default semua aktif (pakai expert weight)
+  const [activeAspects, setActiveAspects] = useState<Set<string>>(() => new Set(ALL_ASPECTS))
+
+
+  const toggleAspect = (asp: string) => {
+    setActiveAspects(prev => {
+      const next = new Set(prev)
+      if (next.has(asp)) {
+        if (next.size === 1) return prev // minimal 1 aspek aktif
+        next.delete(asp)
+      } else {
+        next.add(asp)
+      }
+      return next
+    })
+  }
+
+  // Hitung bobot aktif
+  const activeWeights = useMemo(() => {
+    const filtered: Record<string, number> = {}
+    for (const asp of activeAspects) {
+      filtered[asp] = EXPERT_WEIGHTS[asp] ?? (1 / 8)
+    }
+    // Normalisasi agar total = 1 (penting saat aspek dikurangi)
+    const total = Object.values(filtered).reduce((a, b) => a + b, 0)
+    for (const k in filtered) filtered[k] = filtered[k] / total
+    return filtered
+  }, [activeAspects])
 
   // Hover state untuk garis provider: pertebal garis + tampilkan tooltip nama provider
   const [hoveredLine, setHoveredLine] = useState<string | null>(null)
@@ -444,16 +472,76 @@ function WeightedTemporalChart({ rawTrend, loading, selectedProvider }: {
   return (
     <div>
       {/* Header */}
-      <div style={{ marginBottom: 10 }}>
-        <p style={{ fontSize: 13, fontWeight: 600, color: '#085041', marginBottom: 2 }}>
-          Tren Sentimen Temporal · {displayYear}
-        </p>
-        <p style={{ fontSize: 11, color: '#3D6B5C' }}>
-          Skor agregat bulanan per provider · skala −1 (negatif) hingga +1 (positif) · ternormalisasi per volume komentar
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#085041', marginBottom: 2 }}>
+            Tren Sentimen Temporal · {displayYear}
+          </p>
+          <p style={{ fontSize: 11, color: '#3D6B5C' }}>
+            Skor agregat bulanan per provider · skala −1 (negatif) hingga +1 (positif) · ternormalisasi per volume komentar
+          </p>
+        </div>
+
       </div>
 
-      {/* Legend */}
+      {/* Toggle Aspek */}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+          <span style={{ fontSize: 10, color: '#3D6B5C', fontWeight: 500 }}>Filter Aspek:</span>
+          <button onClick={() => setActiveAspects(new Set(ALL_ASPECTS))} style={{
+            fontSize: 9, padding: '2px 8px', borderRadius: 100,
+            border: '1px solid #B8DDD2', background: '#F4FBF8',
+            color: '#3D6B5C', cursor: 'pointer',
+          }}>Semua</button>
+          <button onClick={() => {
+            const top = ALL_ASPECTS.slice(0, 3) // Kecepatan, Stabilitas, Penanganan
+            setActiveAspects(new Set(top))
+          }} style={{
+            fontSize: 9, padding: '2px 8px', borderRadius: 100,
+            border: '1px solid #B8DDD2', background: '#F4FBF8',
+            color: '#3D6B5C', cursor: 'pointer',
+          }}>Teknis</button>
+          <button onClick={() => {
+            setActiveAspects(new Set(['Layanan Pelanggan', 'Penanganan Gangguan', 'Kemudahan Akses Layanan']))
+          }} style={{
+            fontSize: 9, padding: '2px 8px', borderRadius: 100,
+            border: '1px solid #B8DDD2', background: '#F4FBF8',
+            color: '#3D6B5C', cursor: 'pointer',
+          }}>Layanan</button>
+          <button onClick={() => {
+            setActiveAspects(new Set(['Harga', 'Instalasi']))
+          }} style={{
+            fontSize: 9, padding: '2px 8px', borderRadius: 100,
+            border: '1px solid #B8DDD2', background: '#F4FBF8',
+            color: '#3D6B5C', cursor: 'pointer',
+          }}>Harga & Instalasi</button>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+          {ALL_ASPECTS.map(asp => {
+            const isActive = activeAspects.has(asp)
+            const w = (EXPERT_WEIGHTS[asp] * 100).toFixed(0)
+            return (
+              <button key={asp} onClick={() => toggleAspect(asp)} style={{
+                fontSize: 10, padding: '3px 10px', borderRadius: 100,
+                border: `1px solid ${isActive ? '#1D9E75' : '#D0D0D0'}`,
+                background: isActive ? '#E1F5EE' : '#F9F9F9',
+                color: isActive ? '#085041' : '#999',
+                cursor: 'pointer', transition: 'all 0.15s',
+                fontWeight: isActive ? 500 : 400,
+              }}>
+                {asp} <span style={{ opacity: 0.6 }}>{w}%</span>
+              </button>
+            )
+          })}
+        </div>
+        {activeAspects.size < ALL_ASPECTS.size && (
+          <p style={{ fontSize: 10, color: '#A0750A', marginTop: 5 }}>
+            ⚠ Menampilkan {activeAspects.size} dari {ALL_ASPECTS.size} aspek — bobot dinormalisasi ulang
+          </p>
+        )}
+      </div>
+
+      {/* Legend provider */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', marginBottom: 10 }}>
         {chartData.map(d => (
           <div key={d.provider} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -610,9 +698,11 @@ function WeightedTemporalChart({ rawTrend, loading, selectedProvider }: {
         )}
       </div>
 
-      {/* Keterangan bobot */}
+      {/* Keterangan bobot aktif */}
       <p style={{ fontSize: 10, color: '#3D6B5C', marginTop: 8, opacity: 0.7 }}>
-        Bobot aspek berdasarkan expert judgment: Kecepatan · Stabilitas · Penanganan · Keamanan (15,2%) · Layanan Pelanggan (12,1%) · Harga · Kemudahan · Instalasi (9,1%)
+        Bobot expert judgment: {
+          Object.entries(activeWeights).map(([asp, w]) => `${asp} (${(w*100).toFixed(1)}%)`).join(' · ')
+        }
       </p>
       <p style={{ fontSize: 10, color: '#3D6B5C', marginTop: 4, opacity: 0.7 }}>
         Arahkan kursor ke titik untuk melihat jumlah komentar (n) pada bulan tsb — n kecil berarti hati-hati menafsirkan lonjakan skornya
@@ -699,6 +789,7 @@ export default function OverviewPage() {
             if (!byMonth[row.month]) byMonth[row.month] = { neg: 0, pos: 0, neu: 0, total: 0 }
             byMonth[row.month].neg   += row.neg   ?? 0
             byMonth[row.month].pos   += row.pos   ?? 0
+            byMonth[row.month].neu   += row.neu   ?? 0
             byMonth[row.month].total += row.total ?? 0
           }
           const points: TrendPoint[] = Object.keys(byMonth).sort().map((month) => {
