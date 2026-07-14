@@ -355,6 +355,22 @@ function WeightedTemporalChart({ rawTrend, loading, selectedProvider }: {
   // Toggle aspek — default semua aktif (pakai expert weight)
   const [activeAspects, setActiveAspects] = useState<Set<string>>(() => new Set(ALL_ASPECTS))
 
+  // Bobot kustom per aspek (nilai 1-100)
+  const [customWeights, setCustomWeights] = useState<Record<string, number>>(() => {
+    const init: Record<string, number> = {}
+    for (const asp of ALL_ASPECTS) init[asp] = Math.round(EXPERT_WEIGHTS[asp] * 100)
+    return init
+  })
+  const [useCustom, setUseCustom] = useState(false)
+
+  const handleWeightChange = (asp: string, val: string) => {
+    const num = Math.max(1, Math.min(100, parseInt(val) || 1))
+    setCustomWeights(prev => ({ ...prev, [asp]: num }))
+  }
+
+  const customTotal = ALL_ASPECTS
+    .filter(a => activeAspects.has(a))
+    .reduce((s, a) => s + (customWeights[a] ?? 1), 0)
 
   const toggleAspect = (asp: string) => {
     setActiveAspects(prev => {
@@ -369,17 +385,18 @@ function WeightedTemporalChart({ rawTrend, loading, selectedProvider }: {
     })
   }
 
-  // Hitung bobot aktif
+  // Hitung bobot aktif — expert atau kustom, selalu dinormalisasi ke 1
   const activeWeights = useMemo(() => {
     const filtered: Record<string, number> = {}
     for (const asp of activeAspects) {
-      filtered[asp] = EXPERT_WEIGHTS[asp] ?? (1 / 8)
+      filtered[asp] = useCustom
+        ? (customWeights[asp] ?? 1)
+        : (EXPERT_WEIGHTS[asp] ?? (1 / 8))
     }
-    // Normalisasi agar total = 1 (penting saat aspek dikurangi)
     const total = Object.values(filtered).reduce((a, b) => a + b, 0)
     for (const k in filtered) filtered[k] = filtered[k] / total
     return filtered
-  }, [activeAspects])
+  }, [activeAspects, useCustom, customWeights])
 
   // Hover state untuk garis provider: pertebal garis + tampilkan tooltip nama provider
   const [hoveredLine, setHoveredLine] = useState<string | null>(null)
@@ -516,10 +533,13 @@ function WeightedTemporalChart({ rawTrend, loading, selectedProvider }: {
             color: '#3D6B5C', cursor: 'pointer',
           }}>Harga & Instalasi</button>
         </div>
+        {/* Chip aspek — horizontal, tetap seperti sebelumnya */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
           {ALL_ASPECTS.map(asp => {
             const isActive = activeAspects.has(asp)
-            const w = (EXPERT_WEIGHTS[asp] * 100).toFixed(0)
+            const displayPct = useCustom
+              ? (isActive ? ((customWeights[asp] ?? 1) / customTotal * 100).toFixed(1) : '0')
+              : (EXPERT_WEIGHTS[asp] * 100).toFixed(0)
             return (
               <button key={asp} onClick={() => toggleAspect(asp)} style={{
                 fontSize: 10, padding: '3px 10px', borderRadius: 100,
@@ -529,16 +549,82 @@ function WeightedTemporalChart({ rawTrend, loading, selectedProvider }: {
                 cursor: 'pointer', transition: 'all 0.15s',
                 fontWeight: isActive ? 500 : 400,
               }}>
-                {asp} <span style={{ opacity: 0.6 }}>{w}%</span>
+                {asp} <span style={{ opacity: 0.6 }}>{displayPct}%</span>
               </button>
             )
           })}
         </div>
-        {activeAspects.size < ALL_ASPECTS.length && (
-          <p style={{ fontSize: 10, color: '#A0750A', marginTop: 5 }}>
-            ⚠ Menampilkan {activeAspects.size} dari {ALL_ASPECTS.length} aspek — bobot dinormalisasi ulang
-          </p>
-        )}
+
+        {/* Baris bawah: tombol kustom + panel input */}
+        <div style={{ marginTop: 8, display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <button onClick={() => setUseCustom(p => !p)} style={{
+              fontSize: 10, padding: '3px 12px', borderRadius: 100,
+              border: `1px solid ${useCustom ? '#085041' : '#B8DDD2'}`,
+              background: useCustom ? '#085041' : '#F4FBF8',
+              color: useCustom ? '#fff' : '#3D6B5C',
+              cursor: 'pointer', fontWeight: useCustom ? 600 : 400,
+            }}>
+              {useCustom ? '✎ Mode Kustom Aktif' : '✎ Isi Bobot Sendiri'}
+            </button>
+            {useCustom && (
+              <button onClick={() => {
+                const reset: Record<string, number> = {}
+                for (const asp of ALL_ASPECTS) reset[asp] = Math.round(EXPERT_WEIGHTS[asp] * 100)
+                setCustomWeights(reset)
+              }} style={{
+                fontSize: 10, padding: '3px 10px', borderRadius: 100,
+                border: '1px solid #B8DDD2', background: '#fff',
+                color: '#3D6B5C', cursor: 'pointer',
+              }}>Reset ke Expert</button>
+            )}
+            {activeAspects.size < ALL_ASPECTS.length && (
+              <span style={{ fontSize: 10, color: '#A0750A' }}>
+                ⚠ {activeAspects.size}/{ALL_ASPECTS.length} aspek aktif — bobot dinormalisasi ulang
+              </span>
+            )}
+          </div>
+
+          {/* Panel input bobot kustom — muncul di sebelah kanan */}
+          {useCustom && (
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', gap: '6px 16px',
+              padding: '10px 14px', background: '#F4FBF8',
+              borderRadius: 10, border: '1px solid #B8DDD2', flex: 1, minWidth: 280,
+            }}>
+              <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                <span style={{ fontSize: 10, fontWeight: 600, color: '#085041' }}>Bobot Kustom (1–100)</span>
+                <span style={{ fontSize: 10, color: customTotal === 100 ? '#1A7A43' : '#A0750A' }}>
+                  Total: {customTotal} {customTotal === 100 ? '✓' : '→ dinormalisasi otomatis'}
+                </span>
+              </div>
+              {ALL_ASPECTS.map(asp => {
+                const isActive = activeAspects.has(asp)
+                return (
+                  <div key={asp} style={{ display: 'flex', alignItems: 'center', gap: 5, opacity: isActive ? 1 : 0.35 }}>
+                    <span style={{ fontSize: 10, color: '#3D6B5C', minWidth: 150 }}>{asp}</span>
+                    <input
+                      type="number" min={1} max={100}
+                      value={customWeights[asp] ?? Math.round(EXPERT_WEIGHTS[asp] * 100)}
+                      onChange={e => handleWeightChange(asp, e.target.value)}
+                      disabled={!isActive}
+                      style={{
+                        width: 48, padding: '2px 6px', fontSize: 11, borderRadius: 6,
+                        border: `1px solid ${isActive ? '#1D9E75' : '#D0D0D0'}`,
+                        background: isActive ? '#fff' : '#F0F0F0',
+                        color: isActive ? '#085041' : '#aaa',
+                        textAlign: 'right', outline: 'none',
+                      }}
+                    />
+                    <span style={{ fontSize: 10, color: '#1D9E75', minWidth: 44 }}>
+                      = {isActive ? ((customWeights[asp] ?? 1) / customTotal * 100).toFixed(1) : '0'}%
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Legend provider */}
